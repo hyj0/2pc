@@ -1,0 +1,13 @@
+syntax="proto2";
+package tpc.Config;
+
+message Host {
+    optional uint32 hash_id = 1; //´æ´¢hash
+    optional string host = 2;  //¼àÌýµØÖ·
+    optional uint32 port = 3;  //¼àÌý¶Ë¿Ú
+}
+
+message Config {
+    repeated Host host = 1;
+    optional uint32 self_hash_id = 2; // ±¾»ú´æ´¢hash
+}

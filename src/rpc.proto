@@ -1,0 +1,68 @@
+syntax="proto2";
+import "config.proto";
+package tpc.Network;
+
+message RpcReq {
+    //begin get update prepare commit rollback
+    optional uint32 request_type = 2;//1--begin    3--prepare  4--commit 5--rollback   6--delete 7--insert 8--update 9--get
+    optional string begin_ts = 3;
+    optional string key = 4;
+    optional string value = 5;
+    optional string start_ts = 6; // prepare(start_ts, transList)
+    optional string commit_ts = 7; // commit(commit_ts) or rollback(commit_ts)
+    repeated tpc.Config.Host trans_list = 8;//
+}
+
+message RpcRes {
+    optional uint32 result = 1;//0--success,  else--err
+    optional string err_msg = 2;//
+    optional string begin_ts = 3;
+    optional string key = 4;
+    optional string value = 5;
+}
+
+message CliReq {
+    //begin get update commit rollback
+    optional uint32 request_type = 2;//1--begin   4--commit 5--rollback    6--delete 7--insert 8--update 9--get
+    optional string begin_ts = 3;
+    optional string key = 4;
+    optional string value = 5;
+}
+
+message CliRes {
+    optional uint32 result = 1;//0--success,  else--err
+    optional string err_msg = 2;//
+    optional string begin_ts = 3;
+    optional string key = 4;
+    optional string value = 5;
+}
+
+message TransStateReq {
+
+}
+
+message TransStateRes {
+
+}
+
+enum MsgType {
+    MSG_Type_Rpc_Request = 1;
+    MSG_Type_Rpc_Response = 2;
+    MSG_Type_Cli_Request = 3;
+    MSG_Type_Cli_Response = 4;
+    MSG_Type_TransState_Request = 5;
+    MSG_Type_TransState_Response = 6;
+};
+
+message Msg {
+    optional string group_id = 1;
+    optional MsgType msg_type = 2;
+    oneof MsgContent{
+        RpcReq rpc_request = 5;
+        RpcRes rpc_response = 6;
+        CliReq cli_request = 7;
+        CliRes cli_response = 8;
+        TransStateReq trans_state_request = 9;
+        TransStateRes trans_state_response = 10;
+    }
+};
