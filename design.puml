@@ -1,0 +1,78 @@
+@startuml
+'方案1
+
+client -> logicServ: begin,
+logicServ -> logicServ:begin_ts = getTs()
+'logicServ -> storageServ:
+logicServ -->client:
+
+client->logicServ:get(key)
+logicServ->storageServ:begin(begin_ts); get(key, begin_ts)
+storageServ --> logicServ:
+logicServ --> client:
+
+client -> logicServ: update(key, value)
+logicServ -> storageServ:update(key, value, begin_ts)
+storageServ --> logicServ:
+client <-- logicServ:
+
+client -> logicServ: commit()
+logicServ -> logicServ:start_ts = getTs()
+logicServ -> storageServ:所有参与者prepare(start_ts, transList)
+storageServ-->logicServ:
+logicServ -> logicServ:commit_ts = getTs()
+logicServ->storageServ:id0参与者commit(commit_ts)
+storageServ-->logicServ:
+logicServ-->client:
+
+
+@enduml
+
+@startuml
+
+'(*)--> if "Some Test" then
+'
+'     -->[true] "activity 13"
+'
+'(*) --> if "Some Test" then
+'
+'  -->[true] "activity 1"
+'
+'  if "" then
+'	-> "activity 3" as a3
+'  else
+'	if "Other test" then
+'	  -left-> "activity 5"
+'	else
+'	  --> "activity 6"
+'	endif
+'  endif
+'
+'else
+'
+'  ->[false] "activity 2"
+'
+'endif
+'
+'a3 --> if "last test" then
+'  --> "activity 7"
+'else
+'  -> "activity 8"
+'endif
+'a3 --> if "last test1" then
+'  --> "activity 9"
+'else
+'  -> "activity 10"
+'endif
+
+(*) --> "a"
+"TransationList"-->Trans1={stat:commited, version:commit_ts1}
+"TransationList(no commited)"-->Trans2={stat:no prepare, version:null}
+"TransationList(no commited)"-->Trans3={stat:no prepare, version:null}
+
+DataList --> data_key1_entry={value:x, next:Trans1, version:Trans1}
+DataList --> data_key2_entry={value:y, next:null, version:Trans1}
+
+"data_key1_entry={value:x, next:Trans1, version:Trans1}"-->data_key1_Trans1={value:x, next:null, version:Trans1}
+
+@enduml
