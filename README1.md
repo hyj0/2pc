@@ -59,6 +59,7 @@
 #### prepared(start_ts, transList)
     参与者:写redolog, 更新trans_begin_ts --> {state:prepared, commitTrans:null, startTrans:start_ts, next:null,  transList:[id0, id1/*参与者列表*/]}, 返回
     协调者:如果所有节点prepare返回成功, 则返回client成功, 异步通知transList:id0成功commit(commit_ts)
+    todo:这里client先知道提交成功, 如果client又马上begin(begin_ts), 而参与者还没有commit(commit_ts), 这里begin_ts有可能大于commit_ts, 会读不到数据
 #### commit(commit_ts)  
     参与者:更新trans_begin_ts --> {state:commited, commitTrans:commit_ts, startTrans:start_ts, next:null,  transList:[id0, id1/*参与者列表*/]}
     清除锁
