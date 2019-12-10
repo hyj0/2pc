@@ -16,10 +16,14 @@ message Lock {
 }
 
 
+message TransList {
+    optional tpc.Config.Host host = 1;
+    optional string commit_ts = 2;//prepared返回前取的commit_ts
+}
 //trans_begin_ts2 --> {state:prepared, commitTrans:commit_ts2,  startTrans:start_ts2,   transList:[id0, id1/*参与者列表*/]}
 message Trans {
     optional uint32 state = 1; // 1--begin 2--prepared 3--commited 4--rollback
     optional string commit_trans = 2;
     optional string start_trans = 3;
-    repeated tpc.Config.Host trans_list = 4;
+    repeated TransList trans_list = 4;
 }

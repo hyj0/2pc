@@ -20,10 +20,11 @@ client -> logicServ: commit()
 logicServ -> logicServ:start_ts = getTs()
 logicServ -> storageServ:所有参与者prepare(start_ts, transList)
 storageServ-->logicServ:
-logicServ -> logicServ:commit_ts = getTs()
-logicServ->storageServ:id0参与者commit(commit_ts)
+logicServ-->client:返回commit成功
+
+logicServ -> logicServ:commit_ts = getTs() [可选]
+logicServ->storageServ:id0参与者commit(commit_ts) [可选]
 storageServ-->logicServ:
-logicServ-->client:
 
 
 @enduml
