@@ -1,10 +1,11 @@
 syntax="proto2";
 import "config.proto";
+import "rpc.proto";
 package tpc.Storage;
 
 //data_key1_entry --> {state:update, value:value3, next:begin_ts1, cur_version:begin_ts2}
 message Data {
-    optional uint32 state = 1; //1--insert 2--update 3--delete
+    optional tpc.Network.RequestType state = 1; //insert update delete
     optional string value = 2;
     optional string next = 3;
     optional string cur_version = 4;
@@ -19,10 +20,11 @@ message Lock {
 message TransList {
     optional tpc.Config.Host host = 1;
     optional string commit_ts = 2;//prepared返回前取的commit_ts
+    optional tpc.Network.TransState state = 3;
 }
 //trans_begin_ts2 --> {state:prepared, commitTrans:commit_ts2,  startTrans:start_ts2,   transList:[id0, id1/*参与者列表*/]}
 message Trans {
-    optional uint32 state = 1; // 1--begin 2--prepared 3--commited 4--rollback
+    optional tpc.Network.TransState state = 1; // 1--begin 2--prepared 3--commited 4--rollback
     optional string commit_trans = 2;
     optional string start_trans = 3;
     repeated TransList trans_list = 4;

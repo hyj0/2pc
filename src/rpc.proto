@@ -2,9 +2,20 @@ syntax="proto2";
 import "config.proto";
 package tpc.Network;
 
+enum RequestType {
+    Req_Type_Begin = 1;
+    Req_Type_Prepare = 2;
+    Req_Type_Commit = 3;
+    Req_Type_Rollback = 5;
+    Req_Type_Delete = 6;
+    Req_Type_Insert = 7;
+    Req_Type_Update = 8;
+    Req_Type_Get = 9;
+}
+
 message RpcReq {
     //begin get update prepare commit rollback
-    optional uint32 request_type = 2;//1--begin    3--prepare  4--commit 5--rollback   6--delete 7--insert 8--update 9--get
+    optional RequestType request_type = 2;//1--begin    3--prepare  4--commit 5--rollback   6--delete 7--insert 8--update 9--get
     optional string begin_ts = 3;
     optional string key = 4;
     optional string value = 5;
@@ -23,7 +34,7 @@ message RpcRes {
 
 message CliReq {
     //begin get update commit rollback
-    optional uint32 request_type = 2;//1--begin   4--commit 5--rollback    6--delete 7--insert 8--update 9--get
+    optional RequestType request_type = 2;//1--begin   4--commit 5--rollback    6--delete 7--insert 8--update 9--get
     optional string begin_ts = 3;
     optional string key = 4;
     optional string value = 5;
@@ -37,16 +48,24 @@ message CliRes {
     optional string value = 5;
 }
 
+enum TransState {
+    TransStateBegin = 1;
+    TransStatePrepared = 2;
+    TransStateCommited = 3;
+    TransStateRollback = 4;
+
+}
+
 message TransStateReq {
     optional tpc.Config.Host host = 1; //请求端
-    optional uint32 trans_stat = 2;// 事务状态 1--begin 2--prepared 3--commited 4--rollback
+    optional TransState trans_stat = 2;// 事务状态 1--begin 2--prepared 3--commited 4--rollback
     optional string begin_ts = 3; //请求端事务id
     optional string commit_ts = 4; //请求端commit_ts 如果事务状态为prepared, 则commit_ts表示prepared返回前取的commit_ts
 }
 
 message TransStateRes {
     optional tpc.Config.Host host = 1; //返回端
-    optional uint32 trans_stat = 2;//事务状态 1--begin 2--prepared 3--commited 4--rollback
+    optional TransState trans_stat = 2;//事务状态 1--begin 2--prepared 3--commited 4--rollback
     optional string begin_ts = 3; //返回端事务id
     optional string commit_ts = 4; //返回端commit_ts
 }
