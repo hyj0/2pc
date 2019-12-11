@@ -15,6 +15,7 @@ namespace tpc::Core {
     public:
         static string ReadWholeFile(string filePath);
         static string Msg2JsonStr(::google::protobuf::Message &message);
+        static int JsonStr2Msg(string jsonStr, ::google::protobuf::Message &message);
         static string GetTS();
         static int GetHash(string key, int size);
     };

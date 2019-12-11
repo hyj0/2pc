@@ -32,10 +32,11 @@ string tpc::Core::Utils::Msg2JsonStr(::google::protobuf::Message &message) {
 }
 
 string tpc::Core::Utils::GetTS() {
+    //todo:需要优化...
     struct timeval tv;
     gettimeofday(&tv, NULL);
     stringstream ss;
-    ss << (tv.tv_sec*1000 + tv.tv_usec);
+    ss << "ts" << (tv.tv_sec*1000 + tv.tv_usec);
     return ss.str();
 }
 
@@ -45,4 +46,15 @@ int tpc::Core::Utils::GetHash(string key, int size) {
         n += key[i];
     }
     return n%size;
+}
+
+int tpc::Core::Utils::JsonStr2Msg(string jsonStr, ::google::protobuf::Message &message) {
+    Pb2Json::Json  json;
+    json = Pb2Json::Json::parse(jsonStr);
+    bool ret = Pb2Json::Json2Message(json, message, true);
+    if (ret != true) {
+        LOG_COUT << "Json2Message err jsonStr=" << jsonStr << " json=" << json << LOG_ENDL_ERR;
+        return ret;
+    }
+    return 0;
 }

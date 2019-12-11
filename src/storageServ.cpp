@@ -11,6 +11,7 @@
 #include <Msg.h>
 #include <unistd.h>
 #include <netinet/in.h>
+#include <Storage.h>
 
 using namespace std;
 
@@ -18,7 +19,7 @@ int g_listen_fd;
 shared_ptr<tpc::Config::Config> g_config;
 int g_nHashId = 0;
 tpc::Config::Host g_self_host;
-
+tpc::Core::Storage g_storage;
 struct task_t
 {
     stCoRoutine_t *co;
@@ -45,6 +46,9 @@ static void *readwrite_routine( void *arg )
         co->fd = -1;
 
         tpc::Core::Msg msg;
+        string begin_ts;
+        string start_ts;
+
         int ret;
         for (;;) {
             struct pollfd pf = {0};
@@ -61,18 +65,96 @@ static void *readwrite_routine( void *arg )
                 break;
             }
 
+            //resMsg
+            tpc::Network::Msg resMsg;
+            resMsg.set_msg_type(tpc::Network::MsgType::MSG_Type_Rpc_Response);
+            tpc::Network::RpcRes *rpcRes = resMsg.mutable_rpc_response();
+
             tpc::Network::Msg reqMsg = msg.getMsg();
             if (msgType == tpc::Network::MsgType::MSG_Type_Rpc_Request) {
                 LOG_COUT << "fd=" << fd << " reqMsg:" << tpc::Core::Utils::Msg2JsonStr(reqMsg) << LOG_ENDL;
+                tpc::Network::RpcReq *rpcReq = reqMsg.mutable_rpc_request();
+                if (rpcReq->request_type() == tpc::Network::RequestType::Req_Type_Begin) {
+                    if (begin_ts.length() != 0) {
+                        rpcRes->set_result(1);
+                        rpcRes->set_err_msg("has begin trans!");
+                        goto Response;
+                    }
+                    begin_ts = rpcReq->begin_ts();
+                    //增加记录 trans_begin_ts --> {state:begin, }
+                    ret = g_storage.addTrans(begin_ts);
+                    if (ret != 0) {
+                        LOG_COUT << "addTrans err ret=" << ret << " begin_ts=" << begin_ts << LOG_ENDL_ERR;
+                        rpcRes->set_result(ret);
+                        rpcRes->set_err_msg("addTrans err ");
+                        goto Response;
+                    }
+                } else if (rpcReq->request_type() == tpc::Network::RequestType::Req_Type_Prepare) {
+                    if (begin_ts.length() == 0) {
+                        rpcRes->set_result(1);
+                        rpcRes->set_err_msg("has no begin trans!");
+                        goto Response;
+                    }
+                    start_ts = rpcReq->start_ts();
+                    //参与者:写redolog, 更新trans_begin_ts --> {state:prepared, commitTrans:null, startTrans:start_ts, next:null,  transList:[id0, id1/*参与者列表*/]}, 返回
+                    //返回前commit_ts = getTs(),这个commit_ts各个参与者相互比较,最大的是最终的commit_ts.
+//                    aaa = rpcReq->mutable_trans_list();
+//                    g_storage.updateTrans(begin_ts, tpc::Network::TransState::TransStatePrepared, transList);
+                    string commit_ts = tpc::Core::Utils::GetTS();
+                } else if (rpcReq->request_type() == tpc::Network::RequestType::Req_Type_Commit) {
+                    if (begin_ts.length() == 0) {
+                        rpcRes->set_result(1);
+                        rpcRes->set_err_msg("has no begin trans!");
+                        goto Response;
+                    }
+                } else if (rpcReq->request_type() == tpc::Network::RequestType::Req_Type_Get) {
+                    if (begin_ts.length() == 0) {
+                        rpcRes->set_result(1);
+                        rpcRes->set_err_msg("has no begin trans!");
+                        goto Response;
+                    }
+                    rpcRes->set_key(rpcReq->key());
+                    // 读取data_key1_entry --> {state:update, value:value3, next:begin_ts1},
+                    //    loop 取next --> state:update, value:value3, next:begin_ts1
+                    //        1, 如果next是begin_ts, 返回value, 这是自己修改的记录
+                    //        2, 通过next:begin_ts1查找事务的trans_begin_ts1, 如果trans_start_ts小于输入参数begin_ts: 事务状态是commited, 返回value; 事务状态为prepared则等待(prepared说明事务提交中)
+                    //            返回最大的commited的commit_ts的数据
+                    //        3, 返回not found
+
+                } else if (rpcReq->request_type() == tpc::Network::RequestType::Req_Type_Delete
+                    ||rpcReq->request_type() == tpc::Network::RequestType::Req_Type_Update
+                    || rpcReq->request_type() == tpc::Network::RequestType::Req_Type_Insert) {
+                    if (begin_ts.length() == 0) {
+                        rpcRes->set_result(1);
+                        rpcRes->set_err_msg("has no begin trans!");
+                        goto Response;
+                    }
+                    //加锁key, 增加lock_key --> {trans:begin_ts}
+                    //    读取data_key_entry-->{state:update, value:value3, next:begin_ts2, cur_version:begin_ts1}
+                    //    更新记录data_key_begin_ts1 --> {state:update, value:value3, next:begin_ts2}
+                    //    更新data_key_entry-->{state:update, value:value2, next:begin_ts1, cur_version:begin_ts}
+                    //    trans_begin_ts --> {state:begin, keys:[key, ] }中keys增加key
+
+                    ret = g_storage.addLock(rpcReq->key(), begin_ts);
+                    if (ret != 0) {
+                        rpcRes->set_result(1);
+                        rpcRes->set_err_msg("lock err ");
+                        goto Response;
+                    }
+                    ret = g_storage.addData(rpcReq->key(), rpcReq->value(), begin_ts, rpcReq->request_type());
+                    if (ret != 0) {
+                        rpcRes->set_result(ret);
+                        rpcRes->set_err_msg("addData err");
+                        goto Response;
+                    }
+                }
             } else {
                 LOG_COUT << "err type=" << msgType << LOG_ENDL_ERR;
                 break;
             }
 
-            tpc::Network::Msg resMsg;
-            resMsg.set_msg_type(tpc::Network::MsgType::MSG_Type_Rpc_Response);
-            tpc::Network::RpcRes *rpcRes = resMsg.mutable_rpc_response();
-            rpcRes->set_result(0);
+            Response:
+//            rpcRes->set_result(0);
             ret = msg.SendMsg(fd, resMsg);
             if (ret < 0) {
                 LOG_COUT << "send msg err ret=" << ret << LOG_ENDL_ERR;
@@ -165,6 +247,11 @@ int main(int argc, char **argv) {
     }
     printf("listen %d :%d\n",g_listen_fd, g_self_host.port());
     tpc::Core::Network::SetNonBlock( g_listen_fd );
+
+    stringstream dbPath;
+    dbPath << "data." << g_nHashId;
+    g_storage.init(dbPath.str());
+    g_storage.startUpClean();
 
     // make coroutine
     for (int i = 0; i < 100; i++) {

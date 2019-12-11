@@ -38,6 +38,7 @@ int tpc::Core::Msg::SendMsg(int fd, tpc::Network::Msg &msg) {
     string outStr;
 #if __MSG_JSON
     outStr = tpc::Core::Utils::Msg2JsonStr(msg);
+//    LOG_COUT << "resMsg:" << outStr << LOG_ENDL;
 #else
     ret = msg.SerializeToString(&outStr);
     if (ret != 0) {

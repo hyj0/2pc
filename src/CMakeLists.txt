@@ -16,10 +16,10 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR} ${PROTOBUF_INCLUDE_DIRS}
 set(SRC Log.cpp  Core/Config.cpp Core/Msg.cpp Core/Network.cpp Core/Storage.cpp Core/Utils.cpp)
 
 add_executable(client client.cpp  ${SRC} ${PROTO_SRC} ${PROTO_HEADER})
-target_link_libraries(client  pb2json   protobuf  colib_shared dl)
+target_link_libraries(client rocksdb  pb2json   protobuf  colib_shared dl)
 
 add_executable(logicServ logicServ.cpp  ${SRC} ${PROTO_SRC} ${PROTO_HEADER})
-target_link_libraries(logicServ  pb2json   protobuf colib_shared dl)
+target_link_libraries(logicServ  rocksdb  pb2json   protobuf colib_shared dl)
 
 add_executable(storageServ storageServ.cpp  ${SRC} ${PROTO_SRC} ${PROTO_HEADER})
-target_link_libraries(storageServ  pb2json   protobuf  colib_shared dl)
+target_link_libraries(storageServ  rocksdb pb2json   protobuf  colib_shared dl)

@@ -151,8 +151,11 @@ static void *readwrite_routine( void *arg )
                     }
                     start_ts = tpc::Core::Utils::GetTS();
                     //prepare
+                    //协调者:如果所有节点prepare返回成功, 则返回client成功, 异步通知transList:id0成功commit(commit_ts)
+                    //    todo:这里client先知道提交成功, 如果client又马上begin(begin_ts), 而参与者还没有commit(commit_ts), 这里begin_ts有可能大于commit_ts, 会读不到数据
+                    //    -->参与者返回前commit_ts = getTs(),这个commit_ts各个参与者相互比较,最大的是最终的commit_ts.
 
-                    //commit
+                    //commit(commit_ts) 可选!!!
 
 
                 } else if (cliReq->request_type() == tpc::Network::RequestType::Req_Type_Rollback) {
@@ -201,6 +204,8 @@ static void *readwrite_routine( void *arg )
                         goto Respone;
                     }
                     tpc::Network::RpcRes *rpcRes = resMsg.mutable_rpc_response();
+                    retCode = rpcRes->result();
+                    errMsg = rpcRes->err_msg();
                     cliRes->set_key(rpcRes->key());
                     cliRes->set_value(rpcRes->value());
 
