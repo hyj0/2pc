@@ -57,7 +57,8 @@ int tpc::Core::Storage::addLock(string key, string begin_ts) {
             }
             tpc::Storage::Trans trans;
             tpc::Core::Utils::JsonStr2Msg(valueJson, trans);
-            if (trans.state() == tpc::Network::TransState::TransStateRollback) {
+            if (trans.state() == tpc::Network::TransState::TransStateRollback
+                || trans.state() == tpc::Network::TransState::TransStateCommited) {
                 //rollback状态,直接覆盖
                 tpc::Storage::Lock lock;
                 lock.set_trans(begin_ts);
@@ -194,6 +195,10 @@ void tpc::Core::Storage::startCleanTrans(string begin_ts) {
         //todo:prepared的事务异常处理
         LOG_COUT << "start deal TransStatePrepared trans=" << valueJson << LOG_ENDL;
 
+        PrepareTask *co = prepareTaskStack->top();
+        co->begin_ts = begin_ts;
+        prepareTaskStack->pop();
+        co_resume(co->co);
     }
 }
 

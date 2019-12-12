@@ -8,15 +8,24 @@
 #include <pb2json.h>
 #include <string>
 #include <rocksdb/db.h>
+#include <co_routine_inner.h>
 
 using namespace std;
 
+class PrepareTask {
+public:
+    stCoRoutine_t *co;
+    string begin_ts;
+};
+
 namespace tpc::Core {
     class Storage {
-    private:
+    public:
         rocksdb::DB* db;
     public:
+        stack<PrepareTask *> *prepareTaskStack;
         int self_hash_id;
+
         Storage() {}
         virtual ~Storage();
         int init(string dbPath);

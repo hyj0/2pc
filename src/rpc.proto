@@ -68,6 +68,8 @@ message TransStateRes {
     optional TransState trans_stat = 2;//事务状态 1--begin 2--prepared 3--commited 4--rollback
     optional string begin_ts = 3; //返回端事务id
     optional string commit_ts = 4; //返回端commit_ts
+    optional uint32 result = 5;//0--success,  else--err
+    optional string err_msg = 6;
 }
 
 enum MsgType {

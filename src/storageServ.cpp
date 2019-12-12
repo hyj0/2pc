@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <netinet/in.h>
 #include <Storage.h>
+#include <storage.pb.h>
 
 using namespace std;
 
@@ -26,7 +27,129 @@ struct task_t
     int fd;
 };
 static stack<task_t*> g_readwrite;
+stack<PrepareTask *> g_prepareTask;
 
+
+static void *prepare_routine( void *arg ) {
+    co_enable_hook_sys();
+    PrepareTask *co = (PrepareTask*)arg;
+
+    for(;;) {
+        if (co->begin_ts.length() == 0) {
+            g_prepareTask.push(co);
+            co_yield_ct();
+            continue;
+        }
+        string begin_ts = co->begin_ts;
+        co->begin_ts = "";
+
+        //获取事务状态
+        string key = tpc::Core::Storage::makeTrans(begin_ts);
+        string valueJson;
+        rocksdb::Status status = g_storage.db->Get(rocksdb::ReadOptions(), key, &valueJson);
+        if (!status.ok()) {
+            LOG_COUT << "prepare_routine: can not found trans=" << key << LOG_ENDL;
+            break ;
+        }
+        tpc::Storage::Trans trans;
+        tpc::Core::Utils::JsonStr2Msg(valueJson, trans);
+        if (trans.state() != tpc::Network::TransState::TransStatePrepared) {
+            continue;
+        }
+
+        while (1) {
+            int nHasTransStatePrepared = 0;
+            //查询其他节点事务状态, 是否已prepared,
+            for (int i = 0; i < trans.trans_list_size(); ++i) {
+                tpc::Storage::TransList transList = trans.trans_list(i);
+                if (transList.state() == tpc::Network::TransState::TransStatePrepared) {
+                    nHasTransStatePrepared += 1;
+                    continue;
+                }
+                //查询状态, 注意, 有可能对方速度慢, 还处于TransStateBegin, TransStateBegin要等;
+                int fd = tpc::Core::Network::Connect(transList.host().host(), transList.host().port());
+                if (fd < 0) {
+                    //sleep 1s
+                    co_poll( co_get_epoll_ct(), NULL, 0,1000);
+                    continue;
+                }
+                tpc::Network::Msg reqMsg;
+                reqMsg.set_msg_type(tpc::Network::MsgType::MSG_Type_TransState_Request);
+                tpc::Network::TransStateReq *transStateReq = reqMsg.mutable_trans_state_request();
+                transStateReq->set_begin_ts(begin_ts);
+                int ret = tpc::Core::Msg::SendMsg(fd, reqMsg);
+                if (ret != 0) {
+                    LOG_COUT << "send msg err ret=" << ret << LOG_ENDL_ERR;
+                    close(fd);
+                    co_poll( co_get_epoll_ct(), NULL, 0, 500);
+                    continue;
+                }
+                tpc::Core::Msg msg;
+                ret = msg.ReadOneMsg(fd);
+                if (ret < 0) {
+                    LOG_COUT << "ReadOneMsg  err ret=" << ret << LOG_ENDL_ERR;
+                    close(fd);
+                    co_poll( co_get_epoll_ct(), NULL, 0, 500);
+                    continue;
+                }
+                if (ret != tpc::Network::MsgType::MSG_Type_TransState_Response) {
+                    LOG_COUT << "MsgType   err ret=" << ret << LOG_ENDL_ERR;
+                    close(fd);
+                    co_poll( co_get_epoll_ct(), NULL, 0, 500);
+                    continue;
+                }
+                tpc::Network::Msg resMsg = msg.getMsg();
+                tpc::Network::TransState transState = resMsg.mutable_trans_state_response()->trans_stat();
+                trans.mutable_trans_list(i)->set_state(transState);
+                if (transState == tpc::Network::TransState::TransStateBegin) {
+                    close(fd);
+                    continue;
+                } else if (transState == tpc::Network::TransState::TransStatePrepared) {
+                    nHasTransStatePrepared += 1;
+                    close(fd);
+                    continue;
+                } else if (transState == tpc::Network::TransState::TransStateCommited) {
+                    close(fd);
+                    trans.set_state(tpc::Network::TransState::TransStateCommited);
+                    //todo:commit_ts的选择问题!
+                    trans.set_commit_trans(resMsg.mutable_trans_state_response()->commit_ts());
+                    LOG_COUT << "trans commited  " << key << "-->" << tpc::Core::Utils::Msg2JsonStr(trans) << LOG_ENDL;
+                    status = g_storage.db->Put(rocksdb::WriteOptions(), key, tpc::Core::Utils::Msg2JsonStr(trans));
+                    if (!status.ok()) {
+                        LOG_COUT << "save trans err " << status.code() << LOG_ENDL;
+                        assert(0);
+                    }
+                    goto TransEnd;
+                } else if (transState == tpc::Network::TransState::TransStateRollback) {
+                    close(fd);
+                    trans.set_state(tpc::Network::TransState::TransStateRollback);
+                    LOG_COUT << "trans rollback " << key << "-->" << tpc::Core::Utils::Msg2JsonStr(trans) << LOG_ENDL;
+                    status = g_storage.db->Put(rocksdb::WriteOptions(), key, tpc::Core::Utils::Msg2JsonStr(trans));
+                    if (!status.ok()) {
+                        LOG_COUT << "save trans err " << status.code() << LOG_ENDL;
+                        assert(0);
+                    }
+                    goto TransEnd;
+                }
+            }
+            //所有的参与者都prepared了,提交
+            if (nHasTransStatePrepared == trans.trans_list_size()) {
+                trans.set_state(tpc::Network::TransState::TransStateCommited);
+                //todo:commit_ts的选择问题!
+                trans.set_commit_trans(tpc::Core::Utils::GetTS());
+                LOG_COUT << "trans commited  " << key << "-->" << tpc::Core::Utils::Msg2JsonStr(trans) << LOG_ENDL;
+                status = g_storage.db->Put(rocksdb::WriteOptions(), key, tpc::Core::Utils::Msg2JsonStr(trans));
+                if (!status.ok()) {
+                    LOG_COUT << "save trans err " << status.code() << LOG_ENDL;
+                    assert(0);
+                }
+                goto TransEnd;
+            }
+        }
+        TransEnd:
+        ;//nothing
+    }
+}
 
 static void *readwrite_routine( void *arg )
 {
@@ -165,7 +288,28 @@ static void *readwrite_routine( void *arg )
                         goto Response;
                     }
                 }
-            } else {
+            } else if (msgType == tpc::Network::MsgType::MSG_Type_TransState_Request) {
+                resMsg.set_msg_type(tpc::Network::MsgType::MSG_Type_TransState_Response);
+                tpc::Network::TransStateRes *transStateRes = resMsg.mutable_trans_state_response();
+                transStateRes->set_result(0);
+
+                string key = tpc::Core::Storage::makeTrans(reqMsg.mutable_trans_state_request()->begin_ts());
+                string valueJson;
+                rocksdb::Status status = g_storage.db->Get(rocksdb::ReadOptions(), key, &valueJson);
+                if (!status.ok()) {
+                    LOG_COUT << "can not found trans=" << key << LOG_ENDL;
+                    transStateRes->set_result(1);
+                    transStateRes->set_err_msg("get trans err");
+                    goto Response;
+                }
+                tpc::Storage::Trans trans;
+                tpc::Core::Utils::JsonStr2Msg(valueJson, trans);
+
+                transStateRes->set_trans_stat(trans.state());
+                transStateRes->set_commit_ts(trans.commit_trans());
+                goto Response;
+            }
+            else {
                 LOG_COUT << "err type=" << msgType << LOG_ENDL_ERR;
                 break;
             }
@@ -286,7 +430,16 @@ int main(int argc, char **argv) {
     co_create(&accept_co, NULL, accept_routine, 0);
     co_resume(accept_co);
 
+    //异常处理协程
+    for (int j = 0; j < 100; ++j) {
+        PrepareTask *task = new PrepareTask;
+        task->begin_ts = "";
+
+        co_create(&(task->co), NULL, prepare_routine, task);
+        co_resume(task->co);
+    }
     //处理异常事务
+    g_storage.prepareTaskStack = &g_prepareTask;
     g_storage.startUpClean();
 
     co_eventloop(co_get_epoll_ct(), 0, 0);

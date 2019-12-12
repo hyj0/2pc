@@ -105,6 +105,7 @@ int tpc::Core::Network::Connect(string host, int port) {
     SetAddr(host.c_str(), port, addr);
     int ret = connect(fd,(struct sockaddr*)&addr,sizeof(addr));
     if (ret != 0) {
+        close(fd);
         return ret;
     }
     return fd;
