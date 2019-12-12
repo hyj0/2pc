@@ -125,6 +125,16 @@ static void *readwrite_routine( void *arg )
             for (int j = 0; j < g_config->host_size(); ++j) {
                 if (pf[j].fd > 0) {
                     if (pf[j].revents) {
+                        if (storageCl[j].stat == 0) {
+                            //todo:未使用的之前的fd
+                            LOG_COUT << "clean fd=" << pf[j].fd << LOG_ENDL;
+                            close(pf[j].fd);
+                            pf[j].fd = -1;
+                            storageCl[j].fd = -1;
+                            storageCl[j].stat = 0;
+                            continue;
+                        }
+                        //使用中的fd错误
                         kill_trans = 1;
                         LOG_COUT << "storage fd err fd=" << pf[j].fd << LOG_ENDL;
                         break;
@@ -175,7 +185,99 @@ static void *readwrite_routine( void *arg )
                     //    todo:这里client先知道提交成功, 如果client又马上begin(begin_ts), 而参与者还没有commit(commit_ts), 这里begin_ts有可能大于commit_ts, 会读不到数据
                     //    -->参与者返回前commit_ts = getTs(),这个commit_ts各个参与者相互比较,最大的是最终的commit_ts.
 
-                    //commit(commit_ts) 可选!!!
+                    //拼数据
+                    tpc::Network::Msg rpc_reqMsg;
+                    rpc_reqMsg.set_msg_type(tpc::Network::MsgType::MSG_Type_Rpc_Request);
+                    tpc::Network::RpcReq *rpcReq = rpc_reqMsg.mutable_rpc_request();
+                    rpcReq->set_request_type(tpc::Network::RequestType::Req_Type_Prepare);
+                    rpcReq->set_start_ts(start_ts);
+                    rpcReq->set_begin_ts(begin_ts);
+                    for (int i = 0; i < g_config->host_size(); ++i) {
+                        if (storageCl[i].fd > 0 && storageCl[i].stat == 1) {
+                            tpc::Config::Host *host = rpcReq->add_trans_list();
+//                            host->set_hash_id(storageCl[i].host.hash_id());
+//                            host->set_host(storageCl[i].host.host());
+//                            host->set_port(storageCl[i].host.port());
+                            host->CopyFrom(storageCl[i].host);
+                        }
+                    }
+                    
+                    // 发送prepare
+                    for (int i = 0; i < g_config->host_size(); ++i) {
+                        if (storageCl[i].fd > 0 && storageCl[i].stat == 1) {
+                            //send prepared
+                            ret = tpc::Core::Msg::SendMsg(storageCl[i].fd, rpc_reqMsg);
+                            if (ret != 0) {
+                                errMsg = "SendMsg storage  err";
+                                retCode = 1;
+                                kill_trans = 1;
+                                goto Respone;
+                            }
+                        }
+                    }
+                    //处理返回
+                    while (1) {
+                        int nCount = 0;
+                        struct pollfd pf[100] = {0};
+                        memset(pf, 0, sizeof(pf));
+                        pf[g_config->host_size()].fd = fd;
+                        pf[g_config->host_size()].events = (POLLIN | POLLERR | POLLHUP);
+                        for (int i = 0; i < g_config->host_size(); ++i) {
+                            pf[i].fd = storageCl[i].fd;
+                            pf[i].events = (POLLIN | POLLERR | POLLHUP);
+                            if (storageCl[i].stat == 1) {
+                                nCount += 1;
+                            }
+                        }
+                        if (nCount == 0) {
+                            LOG_COUT << "Prepare finish !" << LOG_ENDL;
+                            begin_ts = "";
+                            start_ts = "";
+                            break;
+                        }
+                        ret = co_poll(co_get_epoll_ct(), pf, g_config->host_size()+1, 1000);
+                        if (ret == 0) {
+                            continue;
+                        }
+                        for (int j = 0; j < g_config->host_size(); ++j) {
+                            if (pf[j].fd > 0 && pf[j].revents) {
+                                if (storageCl[j].stat == 0) {
+                                    //todo:未使用的之前的fd
+                                    LOG_COUT << "clean fd=" << pf[j].fd << LOG_ENDL;
+                                    close(pf[j].fd);
+                                    pf[j].fd = -1;
+                                    storageCl[j].fd = -1;
+                                    storageCl[j].stat = 0;
+                                    continue;
+                                } else {
+                                    tpc::Network::Msg resMsg;
+                                    ret = tpc::Core::Msg::ReadOneMsg(pf[j].fd, resMsg);
+                                    if (ret < 0) {
+                                        errMsg = "ReadOneMsg storage  err";
+                                        retCode = 1;
+                                        kill_trans = 1;
+                                        goto Respone;
+                                    }
+                                    // 清理事务状态
+                                    storageCl[j].stat = 0;
+                                    if (resMsg.msg_type() != tpc::Network::MsgType::MSG_Type_Rpc_Response) {
+                                        LOG_COUT << "msg typeErr type=" << resMsg.msg_type() << LOG_ENDL;
+                                        continue;
+                                    }
+                                    tpc::Network::RpcRes *rpcRes = resMsg.mutable_rpc_response();
+                                    if (rpcRes->result() != 0) {
+                                        LOG_COUT << "prepare err Res:" << tpc::Core::Utils::Msg2JsonStr(*rpcRes) << LOG_ENDL;
+                                    }
+                                }
+                            } else {
+                                continue;
+                            }
+                        }
+                    }
+                    // 返回client
+                    retCode = 0;
+                    goto Respone;
+                    //todo:commit(commit_ts) 可选!!!
 
 
                 } else if (cliReq->request_type() == tpc::Network::RequestType::Req_Type_Rollback) {

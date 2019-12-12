@@ -16,6 +16,7 @@ namespace tpc::Core {
     private:
         rocksdb::DB* db;
     public:
+        int self_hash_id;
         Storage() {}
         virtual ~Storage();
         int init(string dbPath);
@@ -46,6 +47,7 @@ namespace tpc::Core {
 
         void startCleanTrans(string begin_ts);
 
+        int updateTransPrepared(string begin_ts, tpc::Network::RpcReq *rpcReq);
     };
 }
 

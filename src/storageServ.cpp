@@ -95,12 +95,29 @@ static void *readwrite_routine( void *arg )
                         rpcRes->set_err_msg("has no begin trans!");
                         goto Response;
                     }
+                    if (begin_ts != rpcReq->begin_ts()) {
+                        rpcRes->set_result(1);
+                        rpcRes->set_err_msg("begin_ts err!");
+                        goto Response;
+                    }
                     start_ts = rpcReq->start_ts();
                     //参与者:写redolog, 更新trans_begin_ts --> {state:prepared, commitTrans:null, startTrans:start_ts, next:null,  transList:[id0, id1/*参与者列表*/]}, 返回
                     //返回前commit_ts = getTs(),这个commit_ts各个参与者相互比较,最大的是最终的commit_ts.
-//                    aaa = rpcReq->mutable_trans_list();
-//                    g_storage.updateTrans(begin_ts, tpc::Network::TransState::TransStatePrepared, transList);
-                    string commit_ts = tpc::Core::Utils::GetTS();
+                    ret = g_storage.updateTransPrepared(begin_ts, rpcReq);
+                    if (ret != 0) {
+                        LOG_COUT << "updateTransPrepared err ret=" << ret << LOG_ENDL;
+                        rpcRes->set_result(1);
+                        rpcRes->set_err_msg("updateTransPrepared err!");
+                        goto Response;
+                    }
+                    //异步处理prepared状态
+                    g_storage.startCleanTrans(begin_ts);
+                    //清理状态
+                    begin_ts = "";
+                    start_ts = "";
+
+                    //todo:save redolog
+//                    string commit_ts = tpc::Core::Utils::GetTS();
                 } else if (rpcReq->request_type() == tpc::Network::RequestType::Req_Type_Commit) {
                     if (begin_ts.length() == 0) {
                         rpcRes->set_result(1);
@@ -237,7 +254,7 @@ int main(int argc, char **argv) {
         }
     }
     g_nHashId = nHashId;
-
+    g_storage.self_hash_id = nHashId;
     //socket 
     g_listen_fd = tpc::Core::Network::CreateTcpSocket(g_self_host.port(), "", true);
     if (g_listen_fd < 0) {

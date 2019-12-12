@@ -192,7 +192,41 @@ void tpc::Core::Storage::startCleanTrans(string begin_ts) {
         }
     } else if (trans.state() == tpc::Network::TransState::TransStatePrepared) {
         //todo:prepared的事务异常处理
-        LOG_COUT << "start deal trans=" << valueJson << LOG_ENDL;
+        LOG_COUT << "start deal TransStatePrepared trans=" << valueJson << LOG_ENDL;
 
     }
+}
+
+int tpc::Core::Storage::updateTransPrepared(string begin_ts, tpc::Network::RpcReq *rpcReq) {
+    string key = tpc::Core::Storage::makeTrans(begin_ts);
+    string valueJson;
+    rocksdb::Status status = db->Get(rocksdb::ReadOptions(), key, &valueJson);
+    if (!status.ok()) {
+        LOG_COUT << "can not found trans=" << key << LOG_ENDL;
+        return -1;
+    }
+    tpc::Storage::Trans trans;
+    tpc::Core::Utils::JsonStr2Msg(valueJson, trans);
+    if (trans.state() != tpc::Network::TransState::TransStateBegin) {
+        LOG_COUT << "trans state err!! " << key << "-->" << valueJson << LOG_ENDL;
+        return -2;
+    }
+    trans.set_state(tpc::Network::TransState::TransStatePrepared);
+    trans.set_start_trans(rpcReq->start_ts());
+    for (int i = 0; i < rpcReq->trans_list_size(); ++i) {
+        tpc::Storage::TransList *transList = trans.add_trans_list();
+        Config::Host *host = transList->mutable_host();
+        host->CopyFrom(rpcReq->trans_list(i));
+        if (host->hash_id() == self_hash_id) {
+            //设置自身为TransStatePrepared
+            transList->set_state(tpc::Network::TransState::TransStatePrepared);
+        }
+    }
+    status = db->Put(rocksdb::WriteOptions(), key, tpc::Core::Utils::Msg2JsonStr(trans));
+    if (!status.ok()) {
+        LOG_COUT << "update trans err ret=" << status.code()
+        << " "<<key << "-->" << tpc::Core::Utils::Msg2JsonStr(trans) << LOG_ENDL;
+        return -3;
+    }
+    return 0;
 }
