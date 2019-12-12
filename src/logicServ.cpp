@@ -109,12 +109,32 @@ static void *readwrite_routine( void *arg )
         }
         int kill_trans = 0;
         for (;;) {
-            struct pollfd pf = {0};
-            pf.fd = fd;
-            pf.events = (POLLIN | POLLERR | POLLHUP);
-            ret = co_poll(co_get_epoll_ct(), &pf, 1, 1000);
+            struct pollfd pf[100] = {0};
+            memset(pf, 0, sizeof(pf));
+            pf[g_config->host_size()].fd = fd;
+            pf[g_config->host_size()].events = (POLLIN | POLLERR | POLLHUP);
+            for (int i = 0; i < g_config->host_size(); ++i) {
+                pf[i].fd = storageCl[i].fd;
+                pf[i].events = (POLLIN | POLLERR | POLLHUP);
+            }
+            ret = co_poll(co_get_epoll_ct(), pf, g_config->host_size()+1, 1000);
             if (ret == 0) {
                 continue;
+            }
+            //storageµÄsocketÒì³£
+            for (int j = 0; j < g_config->host_size(); ++j) {
+                if (pf[j].fd > 0) {
+                    if (pf[j].revents) {
+                        kill_trans = 1;
+                        LOG_COUT << "storage fd err fd=" << pf[j].fd << LOG_ENDL;
+                        break;
+                    }
+                } else {
+                    continue;
+                }
+            }
+            if (kill_trans) {
+                break;
             }
 
             int msgType = msg.ReadOneMsg(fd);

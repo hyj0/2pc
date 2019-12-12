@@ -161,6 +161,10 @@ static void *readwrite_routine( void *arg )
                 break;
             }
         }
+        //todo:连接断开, 清理事务
+        if (begin_ts.length() > 0) {
+            g_storage.startCleanTrans(begin_ts);
+        }
         close(fd);
 
     }
@@ -251,7 +255,7 @@ int main(int argc, char **argv) {
     stringstream dbPath;
     dbPath << "data." << g_nHashId;
     g_storage.init(dbPath.str());
-    g_storage.startUpClean();
+
 
     // make coroutine
     for (int i = 0; i < 100; i++) {
@@ -264,6 +268,9 @@ int main(int argc, char **argv) {
     stCoRoutine_t *accept_co = NULL;
     co_create(&accept_co, NULL, accept_routine, 0);
     co_resume(accept_co);
+
+    //处理异常事务
+    g_storage.startUpClean();
 
     co_eventloop(co_get_epoll_ct(), 0, 0);
     return 0;

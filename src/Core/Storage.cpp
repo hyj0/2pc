@@ -39,9 +39,6 @@ int tpc::Core::Storage::addTrans(string begin_ts) {
     return 0;
 }
 
-string tpc::Core::Storage::makeTrans(string ts) {
-    return string("trans_"+ts);
-}
 
 int tpc::Core::Storage::addLock(string key, string begin_ts) {
     string key0 = tpc::Core::Storage::makeLock(key);
@@ -157,8 +154,7 @@ void tpc::Core::Storage::startUpClean() {
 //        LOG_COUT << iter->key().ToString() << "->" << iter->value().ToString() << LOG_ENDL;
         tpc::Storage::Trans trans;
         tpc::Core::Utils::JsonStr2Msg(iter->value().ToString(), trans);
-        if (trans.state() == tpc::Network::TransState::TransStateBegin
-            || trans.state() == tpc::Network::TransState::TransStatePrepared) {
+        if (trans.state() == tpc::Network::TransState::TransStateBegin) {
             LOG_COUT << iter->key().ToString() << "-->" << "TransStateRollback" << LOG_ENDL;
             trans.set_state(tpc::Network::TransState::TransStateRollback);
             rocksdb::Status status= db->Put(rocksdb::WriteOptions(), iter->key(), tpc::Core::Utils::Msg2JsonStr(trans));
@@ -168,7 +164,35 @@ void tpc::Core::Storage::startUpClean() {
             }
         } else if (trans.state() == tpc::Network::TransState::TransStatePrepared) {
             //todo:prepared的事务异常处理
+            string begin_ts;
+            tpc::Core::Storage::parseTrans(iter->key().ToString(), begin_ts);
+            startCleanTrans(begin_ts);
         }
     }
     delete iter;
+}
+
+void tpc::Core::Storage::startCleanTrans(string begin_ts) {
+    string key = tpc::Core::Storage::makeTrans(begin_ts);
+    string valueJson;
+    rocksdb::Status status = db->Get(rocksdb::ReadOptions(), key, &valueJson);
+    if (!status.ok()) {
+        LOG_COUT << "can not found trans=" << key << LOG_ENDL;
+        return;
+    }
+    tpc::Storage::Trans trans;
+    tpc::Core::Utils::JsonStr2Msg(valueJson, trans);
+    if (trans.state() == tpc::Network::TransState::TransStateBegin) {
+        LOG_COUT << key << "-->" << "TransStateRollback" << LOG_ENDL;
+        trans.set_state(tpc::Network::TransState::TransStateRollback);
+        rocksdb::Status status= db->Put(rocksdb::WriteOptions(), key, tpc::Core::Utils::Msg2JsonStr(trans));
+        if (!status.ok()) {
+            LOG_COUT << "put err" << LOG_ENDL_ERR;
+            assert(0);
+        }
+    } else if (trans.state() == tpc::Network::TransState::TransStatePrepared) {
+        //todo:prepared的事务异常处理
+        LOG_COUT << "start deal trans=" << valueJson << LOG_ENDL;
+
+    }
 }

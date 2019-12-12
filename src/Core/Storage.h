@@ -22,13 +22,17 @@ namespace tpc::Core {
 
         int addTrans(string begin_ts);
 
-        static string makeTrans(string ts);
-
+        static string makeTrans(string ts) {
+            return string("trans_"+ts);
+        }
+        static void parseTrans(string key, string &begin_ts) {
+            begin_ts = key.substr(strlen("trans_"));
+        }
         static string makeLock(string key) {
             return string("lock_"+key);
         }
         static string makeDataEntry(string key){
-            return key + "_entry";
+            return string("data_") + key + "_entry";
         }
         static string makeData(string key, string begin_ts) {
             return string("data_"+key + "_" + begin_ts) ;
@@ -39,6 +43,9 @@ namespace tpc::Core {
         int addData(string key, string value, string begin_ts, tpc::Network::RequestType type);
 
         void startUpClean();
+
+        void startCleanTrans(string begin_ts);
+
     };
 }
 

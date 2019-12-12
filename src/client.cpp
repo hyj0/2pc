@@ -90,7 +90,7 @@ void *mainCoroutine(void *arg)
         tpc::Network::Msg reqMsg;
         reqMsg.set_msg_type(tpc::Network::MsgType::MSG_Type_Cli_Request);
         tpc::Network::CliReq *cliReq = reqMsg.mutable_cli_request();
-        if (strcmp(args[0], "begin") == 0 && n == 1) {
+        if ((strcmp(args[0], "begin") == 0 || strcmp(args[0], "b") == 0) && n == 1) {
             cliReq->set_request_type(tpc::Network::RequestType::Req_Type_Begin);
         } else if (strcmp(args[0], "commit") == 0 && n == 1) {
             cliReq->set_request_type(tpc::Network::RequestType::Req_Type_Commit);
