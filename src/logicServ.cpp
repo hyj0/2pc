@@ -289,7 +289,15 @@ static void *readwrite_routine( void *arg )
                         retCode = 1;
                         goto Respone;
                     }
+                    // todo:优化暴力的rollback...
                     cliRes->set_begin_ts(begin_ts);
+                    begin_ts = "";
+                    start_ts = "";
+                    delete [] storageCl;
+                    StorageCl *storageCl = new StorageCl[g_config->host_size()];
+                    for (int i = 0; i < g_config->host_size(); ++i) {
+                        storageCl[i].host = g_config->host(i);
+                    }
                 } else if (cliReq->request_type() == tpc::Network::RequestType::Req_Type_Get
                     ||cliReq->request_type() == tpc::Network::RequestType::Req_Type_Update
                     ||cliReq->request_type() == tpc::Network::RequestType::Req_Type_Delete
