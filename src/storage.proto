@@ -19,7 +19,7 @@ message Lock {
 
 message TransList {
     optional tpc.Config.Host host = 1;
-    optional string commit_ts = 2;//prepared返回前取的commit_ts
+    optional string commit_ts = 2;//列表项 事务prepared持久化后, 返回logicServ前取的commit_ts
     optional tpc.Network.TransState state = 3;
 }
 //trans_begin_ts2 --> {state:prepared, commitTrans:commit_ts2,  startTrans:start_ts2,   transList:[id0, id1/*参与者列表*/]}
@@ -28,4 +28,5 @@ message Trans {
     optional string commit_trans = 2;
     optional string start_trans = 3;
     repeated TransList trans_list = 4;
+    optional string self_commit_ts = 5;//当前事务prepared持久化后, 返回logicServ前取的commit_ts
 }

@@ -164,12 +164,14 @@ static void *readwrite_routine( void *arg )
             
             tpc::Network::Msg cli_reqMsg = msg.getMsg();
             if (msgType == tpc::Network::MsgType::MSG_Type_Cli_Request) {
-                LOG_COUT << "fd=" << fd << " cli_reqMsg:" << tpc::Core::Utils::Msg2JsonStr(cli_reqMsg) << LOG_ENDL;
+                LOG_COUT << "fd=" << fd << " cli_reqMsg:" << tpc::Core::Utils::Msg2JsonStr(cli_reqMsg)
+                    << ", begin_ts="<< begin_ts << LOG_ENDL;
                 tpc::Network::CliReq *cliReq = cli_reqMsg.mutable_cli_request();
                 if (cliReq->request_type() == tpc::Network::RequestType::Req_Type_Begin) {
                     if (begin_ts.length() != 0) {
                         errMsg = "has begin trans!";
                         retCode = 1;
+                        cliRes->set_begin_ts(begin_ts);
                         goto Respone;
                     }
                     begin_ts = tpc::Core::Utils::GetTS();

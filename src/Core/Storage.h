@@ -58,6 +58,8 @@ namespace tpc::Core {
 
         int updateTransPrepared(string begin_ts, tpc::Network::RpcReq *rpcReq);
 
+        int updateTransSelfCommitTs(string begin_ts, string self_commit_ts);
+
         int ReadData(string begin_ts, string key, string &value, string &retBeginTs, string &retStartTs,
                              string &retCommitTs);
     };

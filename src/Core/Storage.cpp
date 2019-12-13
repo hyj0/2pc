@@ -236,6 +236,34 @@ int tpc::Core::Storage::updateTransPrepared(string begin_ts, tpc::Network::RpcRe
     return 0;
 }
 
+
+int tpc::Core::Storage::updateTransSelfCommitTs(string begin_ts, string self_commit_ts) {
+    string key = tpc::Core::Storage::makeTrans(begin_ts);
+    string valueJson;
+    rocksdb::Status status = db->Get(rocksdb::ReadOptions(), key, &valueJson);
+    if (!status.ok()) {
+        LOG_COUT << "can not found trans=" << key << LOG_ENDL;
+        return status.code();
+    }
+    tpc::Storage::Trans trans;
+    tpc::Core::Utils::JsonStr2Msg(valueJson, trans);
+    if (trans.state() != tpc::Network::TransState::TransStatePrepared) {
+        LOG_COUT << "trans state err!! " << key << "-->" << valueJson << LOG_ENDL;
+        return -2;
+    }
+
+    trans.set_self_commit_ts(self_commit_ts);
+
+    status = db->Put(rocksdb::WriteOptions(), key, tpc::Core::Utils::Msg2JsonStr(trans));
+    if (!status.ok()) {
+        LOG_COUT << "update trans err ret=" << status.code()
+                 << " "<<key << "-->" << tpc::Core::Utils::Msg2JsonStr(trans) << LOG_ENDL;
+        return status.code();
+    }
+    return 0;
+}
+
+
 int tpc::Core::Storage::ReadData(string begin_ts, string key, string &value, string &retBeginTs, string &retStartTs,
                                  string &retCommitTs) {
     // ¶ÁÈ¡data_key1_entry --> {state:update, value:value3, next:begin_ts1, cur_version:begin_ts},

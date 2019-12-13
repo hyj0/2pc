@@ -58,11 +58,16 @@ static void *prepare_routine( void *arg ) {
         }
 
         while (1) {
+            string max_commit_ts = trans.self_commit_ts();
+            if (max_commit_ts.length() == 0) {
+                //todo: 事务self_commit_ts, 说明prepared完了没有生成self_commit_ts, 这里GetTS有问题...
+                max_commit_ts = tpc::Core::Utils::GetTS();
+            }
             int nHasTransStatePrepared = 0;
             //查询其他节点事务状态, 是否已prepared,
             for (int i = 0; i < trans.trans_list_size(); ++i) {
                 tpc::Storage::TransList transList = trans.trans_list(i);
-                if (transList.state() == tpc::Network::TransState::TransStatePrepared) {
+                if (transList.host().hash_id() == g_self_host.hash_id()) {
                     nHasTransStatePrepared += 1;
                     continue;
                 }
@@ -106,12 +111,22 @@ static void *prepare_routine( void *arg ) {
                     continue;
                 } else if (transState == tpc::Network::TransState::TransStatePrepared) {
                     nHasTransStatePrepared += 1;
+                    if (resMsg.mutable_trans_state_response()->commit_ts() > max_commit_ts) {
+                        max_commit_ts = resMsg.mutable_trans_state_response()->commit_ts();
+                    }
                     close(fd);
                     continue;
                 } else if (transState == tpc::Network::TransState::TransStateCommited) {
                     close(fd);
                     trans.set_state(tpc::Network::TransState::TransStateCommited);
-                    //todo:commit_ts的选择问题!
+                    //todo:commit_ts的选择已知commit_ts!
+                    if (resMsg.mutable_trans_state_response()->commit_ts() < max_commit_ts) {
+                        LOG_COUT << "bug!!! " << resMsg.mutable_trans_state_response()->commit_ts()
+                            << " " << max_commit_ts << LOG_ENDL;
+                        if (trans.self_commit_ts().length() > 0) {
+                            assert(0);
+                        }
+                    }
                     trans.set_commit_trans(resMsg.mutable_trans_state_response()->commit_ts());
                     LOG_COUT << "trans commited  " << key << "-->" << tpc::Core::Utils::Msg2JsonStr(trans) << LOG_ENDL;
                     status = g_storage.db->Put(rocksdb::WriteOptions(), key, tpc::Core::Utils::Msg2JsonStr(trans));
@@ -135,8 +150,8 @@ static void *prepare_routine( void *arg ) {
             //所有的参与者都prepared了,提交
             if (nHasTransStatePrepared == trans.trans_list_size()) {
                 trans.set_state(tpc::Network::TransState::TransStateCommited);
-                //todo:commit_ts的选择问题!
-                trans.set_commit_trans(tpc::Core::Utils::GetTS());
+                //todo:commit_ts的选择max_commit_ts!
+                trans.set_commit_trans(max_commit_ts);
                 LOG_COUT << "trans commited  " << key << "-->" << tpc::Core::Utils::Msg2JsonStr(trans) << LOG_ENDL;
                 status = g_storage.db->Put(rocksdb::WriteOptions(), key, tpc::Core::Utils::Msg2JsonStr(trans));
                 if (!status.ok()) {
@@ -233,6 +248,14 @@ static void *readwrite_routine( void *arg )
                         rpcRes->set_err_msg("updateTransPrepared err!");
                         goto Response;
                     }
+                    //更新自身取到的commit_ts
+                    string self_commit_ts = tpc::Core::Utils::GetTS();
+                    ret = g_storage.updateTransSelfCommitTs(begin_ts, self_commit_ts);
+                    if (ret != 0) {
+                        //todo:这里失败将无所适从... 不知道怎么办才好 自杀了事
+                        LOG_COUT << "panic! updateTransSelfCommitTs ret=" << ret << LOG_ENDL;
+                        assert(0);
+                    }
                     //异步处理prepared状态
                     g_storage.startCleanTrans(begin_ts);
                     //清理状态
@@ -295,6 +318,7 @@ static void *readwrite_routine( void *arg )
                         rpcRes->set_err_msg("has no begin trans!");
                         goto Response;
                     }
+                    rpcRes->set_begin_ts(begin_ts);
                     //加锁key, 增加lock_key --> {trans:begin_ts}
                     //    读取data_key_entry-->{state:update, value:value3, next:begin_ts2, cur_version:begin_ts1}
                     //    更新记录data_key_begin_ts1 --> {state:update, value:value3, next:begin_ts2}
@@ -332,7 +356,11 @@ static void *readwrite_routine( void *arg )
                 tpc::Core::Utils::JsonStr2Msg(valueJson, trans);
 
                 transStateRes->set_trans_stat(trans.state());
-                transStateRes->set_commit_ts(trans.commit_trans());
+                if (trans.state() == tpc::Network::TransStatePrepared){
+                    transStateRes->set_commit_ts(trans.self_commit_ts());
+                } else if (trans.state() == tpc::Network::TransStateCommited) {
+                    transStateRes->set_commit_ts(trans.commit_trans());
+                }
                 goto Response;
             }
             else {
