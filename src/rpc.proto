@@ -30,6 +30,9 @@ message RpcRes {
     optional string begin_ts = 3;
     optional string key = 4;
     optional string value = 5;
+    optional string start_ts = 6;
+    optional string commit_ts = 7;
+
 }
 
 message CliReq {
@@ -46,6 +49,8 @@ message CliRes {
     optional string begin_ts = 3;
     optional string key = 4;
     optional string value = 5;
+    optional string start_ts = 6;
+    optional string commit_ts = 7;
 }
 
 enum TransState {

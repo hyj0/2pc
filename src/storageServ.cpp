@@ -260,6 +260,32 @@ static void *readwrite_routine( void *arg )
                     //        2, 通过next:begin_ts1查找事务的trans_begin_ts1, 如果trans_start_ts小于输入参数begin_ts: 事务状态是commited, 返回value; 事务状态为prepared则等待(prepared说明事务提交中)
                     //            返回最大的commited的commit_ts的数据
                     //        3, 返回not found
+                    string key = rpcReq->key();
+                    string value;
+                    string retBeginTs;//数据的begin_ts
+                    string retStartTs;
+                    string retCommitTs;
+                    ret = g_storage.ReadData(begin_ts, key, value, retBeginTs, retStartTs,
+                                             retCommitTs);
+                    rpcRes->set_value(value);
+                    rpcRes->set_begin_ts(retBeginTs);
+                    rpcRes->set_start_ts(retStartTs);
+                    rpcRes->set_commit_ts(retCommitTs);
+                    if (ret != 0) {
+                        rpcRes->set_result(ret);
+                        rpcRes->set_err_msg("ReadData err ");
+                        if (ret == 99) {
+                            rpcRes->set_err_msg("data not found");
+                        } else if (ret == 66) {
+                            rpcRes->set_err_msg("data commiting");
+                        } else if (ret == 33) {
+                            //fix
+                            ret = 0;
+                            value = "";
+                            rpcRes->set_err_msg("data deleted");
+                        }
+                        goto Response;
+                    }
 
                 } else if (rpcReq->request_type() == tpc::Network::RequestType::Req_Type_Delete
                     ||rpcReq->request_type() == tpc::Network::RequestType::Req_Type_Update

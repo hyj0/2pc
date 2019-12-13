@@ -57,6 +57,9 @@ namespace tpc::Core {
         void startCleanTrans(string begin_ts);
 
         int updateTransPrepared(string begin_ts, tpc::Network::RpcReq *rpcReq);
+
+        int ReadData(string begin_ts, string key, string &value, string &retBeginTs, string &retStartTs,
+                             string &retCommitTs);
     };
 }
 

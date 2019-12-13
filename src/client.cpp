@@ -94,20 +94,20 @@ void *mainCoroutine(void *arg)
             cliReq->set_request_type(tpc::Network::RequestType::Req_Type_Begin);
         } else if ((strcmp(args[0], "commit") == 0 || strcmp(args[0], "c") == 0) && n == 1) {
             cliReq->set_request_type(tpc::Network::RequestType::Req_Type_Commit);
-        } else if (strcmp(args[0], "rollback") == 0 && n == 1) {
+        } else if ((strcmp(args[0], "rollback") == 0 || strcmp(args[0], "r") == 0) && n == 1) {
             cliReq->set_request_type(tpc::Network::RequestType::Req_Type_Rollback);
-        } else if (strcmp(args[0], "get") == 0 && n == 2) {
+        } else if ((strcmp(args[0], "get") == 0 || strcmp(args[0], "g") == 0) && n == 2) {
             cliReq->set_request_type(tpc::Network::RequestType::Req_Type_Get);
             cliReq->set_key(args[1]);
-        } else if (strcmp(args[0], "update") == 0 && n == 3) {
+        } else if ((strcmp(args[0], "update") == 0 || strcmp(args[0], "u") == 0) && n == 3) {
             cliReq->set_request_type(tpc::Network::RequestType::Req_Type_Update);
             cliReq->set_key(args[1]);
             cliReq->set_value(args[2]);
-        } else if (strcmp(args[0], "insert") == 0 && n == 3) {
+        } else if ((strcmp(args[0], "insert") == 0 || strcmp(args[0], "i") == 0) && n == 3) {
             cliReq->set_request_type(tpc::Network::RequestType::Req_Type_Insert);
             cliReq->set_key(args[1]);
             cliReq->set_value(args[2]);
-        } else if (strcmp(args[0], "delete") == 0 && n == 2) {
+        } else if ((strcmp(args[0], "delete") == 0 || strcmp(args[0], "d") == 0) && n == 2) {
             cliReq->set_request_type(tpc::Network::RequestType::Req_Type_Delete);
             cliReq->set_key(args[1]);
         } else if (strcmp(args[0], "hash") == 0 && n == 3) {

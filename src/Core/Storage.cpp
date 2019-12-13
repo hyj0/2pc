@@ -235,3 +235,97 @@ int tpc::Core::Storage::updateTransPrepared(string begin_ts, tpc::Network::RpcRe
     }
     return 0;
 }
+
+int tpc::Core::Storage::ReadData(string begin_ts, string key, string &value, string &retBeginTs, string &retStartTs,
+                                 string &retCommitTs) {
+    // 读取data_key1_entry --> {state:update, value:value3, next:begin_ts1, cur_version:begin_ts},
+    //     如果cur_version == begin_ts, 返回
+    //    loop 取next --> state:update, value:value3, next:begin_ts1
+    //        0, 读取begin_ts1对应的trans
+    //        1, 如果next是begin_ts, 返回value, 这是自己修改的记录, 返回
+    //        2, 通过next:begin_ts1查找事务的trans_begin_ts1, 如果trans_start_ts小于输入参数begin_ts: 事务状态是commited, 返回value; 事务状态为prepared则等待(prepared说明事务提交中)
+    //            返回最大的commited的commit_ts的数据
+    //        3, 返回not found
+    string loopBeginTs;
+    while (1) {
+        string datakey;
+        if (loopBeginTs.length() == 0) {
+            datakey = tpc::Core::Storage::makeDataEntry(key);
+        } else {
+            datakey = tpc::Core::Storage::makeData(key, loopBeginTs);
+        }
+        rocksdb::Status status;
+        string valueJson;
+        status = db->Get(rocksdb::ReadOptions(), datakey, &valueJson);
+        if (status.ok()) {
+            tpc::Storage::Data data;
+            tpc::Core::Utils::JsonStr2Msg(valueJson, data);
+            if (data.cur_version() == begin_ts) {
+                //当前事务写入的, 状态应该是begin
+                value = data.value();
+                retBeginTs = data.cur_version();
+                if (data.state() == tpc::Network::RequestType::Req_Type_Delete) {
+                    return 33;//deleted
+                }
+                return 0;
+            } else {
+                //非当前事务写入
+                string transKey = tpc::Core::Storage::makeTrans(data.cur_version());
+                string transJson = "";
+                status = db->Get(rocksdb::ReadOptions(), transKey, &transJson);
+                if (!status.ok()) {
+                    LOG_COUT << "can not found trans=" << transKey << " ret="<< status.code() << LOG_ENDL;
+                    return -1;
+                }
+                tpc::Storage::Trans trans;
+                tpc::Core::Utils::JsonStr2Msg(transJson, trans);
+                if (trans.state() == tpc::Network::TransState::TransStateBegin) {
+                    //事务正在运行中
+                    LOG_COUT << "trans doing !! " << transKey << "-->" << transJson << " "<< datakey << "-->" << valueJson << LOG_ENDL;
+                } else if (trans.state() == tpc::Network::TransState::TransStatePrepared){
+                    if (begin_ts > trans.start_trans()) {
+                        //todo:begin_ts比start_ts大,应该需要等待, 目前直接返回,让client重试
+                        //todo:优化:如果self_commit_ts>begin_ts, 可以直接不管, 取下一条, 因为最终的commit_ts一定大于等于self_commit_ts.
+                        retBeginTs = data.cur_version();
+                        retStartTs = trans.start_trans();
+                        retCommitTs = trans.commit_trans();
+                        return 66;
+                    } else {
+                        ;
+                    }
+                } else if (trans.state() == tpc::Network::TransState::TransStateCommited) {
+                    if (begin_ts > trans.commit_trans()) {
+                        //比begin_ts小的最大版本数据
+                        value = data.value();
+                        retBeginTs = data.cur_version();
+                        retStartTs = trans.start_trans();
+                        retCommitTs = trans.commit_trans();
+                        if (data.state() == tpc::Network::RequestType::Req_Type_Delete) {
+                            return 33;//deleted
+                        }
+                        return 0;
+                    } else {
+                        ;//continue
+                    }
+                } else if (trans.state() == tpc::Network::TransState::TransStateRollback) {
+                    ;//continue
+                }
+
+                //循环
+                loopBeginTs = data.next();
+                if (loopBeginTs.length() == 0) {
+                    //next为空
+                    return 99;
+                }
+                continue;
+            }
+        } else if (status.code() == rocksdb::Status::kNotFound) {
+            //Not found
+            return  99;
+        } else {
+            LOG_COUT << "db Get err!! key="<<datakey << " ret="<<status.code() << LOG_ENDL;
+            assert(0);
+        }
+    }
+    return 0;
+}

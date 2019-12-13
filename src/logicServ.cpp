@@ -173,6 +173,7 @@ static void *readwrite_routine( void *arg )
                         goto Respone;
                     }
                     begin_ts = tpc::Core::Utils::GetTS();
+                    cliRes->set_begin_ts(begin_ts);
                 } else if (cliReq->request_type() == tpc::Network::RequestType::Req_Type_Commit) {
                     if (begin_ts.length() == 0) {
                         errMsg = "has no begin trans!";
@@ -180,6 +181,8 @@ static void *readwrite_routine( void *arg )
                         goto Respone;
                     }
                     start_ts = tpc::Core::Utils::GetTS();
+                    cliRes->set_start_ts(start_ts);
+                    cliRes->set_begin_ts(begin_ts);
                     //prepare
                     //协调者:如果所有节点prepare返回成功, 则返回client成功, 异步通知transList:id0成功commit(commit_ts)
                     //    todo:这里client先知道提交成功, 如果client又马上begin(begin_ts), 而参与者还没有commit(commit_ts), 这里begin_ts有可能大于commit_ts, 会读不到数据
@@ -286,6 +289,7 @@ static void *readwrite_routine( void *arg )
                         retCode = 1;
                         goto Respone;
                     }
+                    cliRes->set_begin_ts(begin_ts);
                 } else if (cliReq->request_type() == tpc::Network::RequestType::Req_Type_Get
                     ||cliReq->request_type() == tpc::Network::RequestType::Req_Type_Update
                     ||cliReq->request_type() == tpc::Network::RequestType::Req_Type_Delete
@@ -330,7 +334,9 @@ static void *readwrite_routine( void *arg )
                     errMsg = rpcRes->err_msg();
                     cliRes->set_key(rpcRes->key());
                     cliRes->set_value(rpcRes->value());
-
+                    cliRes->set_begin_ts(rpcRes->begin_ts());
+                    cliRes->set_start_ts(rpcRes->start_ts());
+                    cliRes->set_commit_ts(rpcRes->commit_ts());
                 }
             } else {
                 LOG_COUT << "err type=" << msgType << LOG_ENDL_ERR;
@@ -340,7 +346,7 @@ static void *readwrite_routine( void *arg )
             Respone:
             cliRes->set_result(retCode);
             cliRes->set_err_msg(errMsg);
-            cliRes->set_begin_ts(begin_ts);
+//            cliRes->set_begin_ts(begin_ts);
             ret = msg.SendMsg(fd, cli_resMsg);
             if (ret < 0) {
                 LOG_COUT << "send msg err ret=" << ret << LOG_ENDL_ERR;
