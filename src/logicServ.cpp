@@ -80,8 +80,11 @@ public:
 
 };
 
+static int g_readwrite_routine_count = 0;
+
 static void *readwrite_routine( void *arg )
 {
+    g_readwrite_routine_count += 1;
     co_enable_hook_sys();
 
     task_t *co = (task_t*)arg;
@@ -403,16 +406,7 @@ static void *accept_routine( void * )
     for(;;)
     {
         //printf("pid %ld g_readwrite.size %ld\n",getpid(),g_readwrite.size());
-        if( g_readwrite.empty() )
-        {
-            printf("empty\n"); //sleep
-            struct pollfd pf = { 0 };
-            pf.fd = -1;
-            poll( &pf,1,1000);
 
-            continue;
-
-        }
         struct sockaddr_in addr; //maybe sockaddr_un;
         memset( &addr,0,sizeof(addr) );
         socklen_t len = sizeof(addr);
@@ -426,10 +420,14 @@ static void *accept_routine( void * )
             co_poll( co_get_epoll_ct(),&pf,1,1000 );
             continue;
         }
+
+        LOG_COUT << "g_readwrite  total=" << g_readwrite_routine_count << " res=" <<  g_readwrite.size() << LOG_ENDL;
         if( g_readwrite.empty() )
         {
-            close( fd );
-            continue;
+            task_t *task = (task_t *) calloc(1, sizeof(task_t));
+            task->fd = -1;
+            co_create(&(task->co), NULL, readwrite_routine, task);
+            co_resume(task->co);
         }
         tpc::Core::Network::SetNonBlock( fd );
         task_t *co = g_readwrite.top();
