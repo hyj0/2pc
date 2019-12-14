@@ -6,6 +6,7 @@ if (NOT PROTOBUF_PROTOC_EXECUTABLE)
 endif()
 
 protobuf_generate_cpp(PROTO_SRC PROTO_HEADER config.proto rpc.proto storage.proto)
+exec_program(${PROTOBUF_PROTOC_EXECUTABLE} ARGS  --cpp_out=${CMAKE_CURRENT_BINARY_DIR} --proto_path=${CMAKE_CURRENT_SOURCE_DIR}  ${CMAKE_CURRENT_SOURCE_DIR}/*.proto)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR} ${PROTOBUF_INCLUDE_DIRS}
         ${PROJECT_SOURCE_DIR}/third_party/libco
