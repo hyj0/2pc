@@ -333,6 +333,28 @@ static void *readwrite_routine( void *arg )
                         goto Respone;
                     }
                     tpc::Network::Msg resMsg;
+                    //todo:考虑client连接断开的情况
+                    while (1) {
+                        struct pollfd pf[2];
+                        memset(pf, 0, sizeof(pf));
+                        pf[0].fd = fd;
+                        pf[0].events = (POLLIN|POLLERR|POLLHUP);
+                        pf[1].fd = sfd;
+                        pf[1].events = (POLLIN|POLLERR|POLLHUP);
+                        ret = co_poll( co_get_epoll_ct(),pf,2,1000);
+                        if (ret != 0) {
+                            if (pf[1].revents) {
+                                break;
+                            }
+                            if (pf[0].revents) {
+                                LOG_COUT << "连接断开 fd="<< fd << " begin_ts=" << begin_ts << LOG_ENDL;
+                                goto Respone;
+                            }
+                        } else {
+                            //无事件
+                            continue;
+                        }
+                    }
                     ret = tpc::Core::Msg::ReadOneMsg(sfd, resMsg);
                     if (ret < 0) {
                         errMsg = "ReadOneMsg storage  err";

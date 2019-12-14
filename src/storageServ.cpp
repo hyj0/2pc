@@ -289,8 +289,17 @@ static void *readwrite_routine( void *arg )
                         while (1) {
                             ret = g_storage.addLock(key, begin_ts);
                             if (ret != 0) {
-                                co_poll( co_get_epoll_ct(), NULL, 0, 500);
-                                continue;
+                                struct pollfd pf = {0};
+                                pf.fd = fd;
+                                pf.events = (POLLIN | POLLERR | POLLHUP);
+                                ret = co_poll(co_get_epoll_ct(), &pf, 1, 500);
+                                if (ret == 0) {
+                                    continue;
+                                } else {
+                                    //有读事件说明连接断开了
+                                    LOG_COUT << "socket err fd=" << fd << LOG_ENDL;
+                                    goto Response;
+                                }
                             } else {
                                 //lock ok
                                 break;
@@ -299,36 +308,53 @@ static void *readwrite_routine( void *arg )
                     }
 
 
-                    string value;
-                    string retBeginTs;//数据的begin_ts
-                    string retStartTs;
-                    string retCommitTs;
-                    //get_for_update则取最新版本的数据
-                    string inBeginTs = rpcReq->get_for_update()? tpc::Core::Utils::GetTS():begin_ts;
-                    if (rpcReq->get_for_update()) {
-                        LOG_COUT << "get_for_update inBeginTs=" << inBeginTs << LOG_ENDL;
-                    }
-                    ret = g_storage.ReadData(inBeginTs, key, value, retBeginTs, retStartTs,
-                                             retCommitTs);
-                    rpcRes->set_value(value);
-                    rpcRes->set_begin_ts(retBeginTs);
-                    rpcRes->set_start_ts(retStartTs);
-                    rpcRes->set_commit_ts(retCommitTs);
-                    if (ret != 0) {
-                        rpcRes->set_result(ret);
-                        rpcRes->set_err_msg("ReadData err ");
-                        if (ret == 99) {
-                            rpcRes->set_err_msg("data not found");
-                        } else if (ret == 66) {
-                            rpcRes->set_err_msg("data commiting");
-                        } else if (ret == 33) {
-                            //fix
-                            ret = 0;
-                            value = "";
-                            rpcRes->set_err_msg("data deleted");
-                        }
-                        goto Response;
-                    }
+                   while (1) { //todo:排队优化
+                       string value;
+                       string retBeginTs;//数据的begin_ts
+                       string retStartTs;
+                       string retCommitTs;
+                       //get_for_update则取最新版本的数据
+                       string inBeginTs = rpcReq->get_for_update()? tpc::Core::Utils::GetTS():begin_ts;
+                       if (rpcReq->get_for_update()) {
+                           LOG_COUT << "get_for_update inBeginTs=" << inBeginTs << LOG_ENDL;
+                       }
+                       ret = g_storage.ReadData(inBeginTs, key, value, retBeginTs, retStartTs,
+                                                retCommitTs);
+                       rpcRes->set_value(value);
+                       rpcRes->set_begin_ts(retBeginTs);
+                       rpcRes->set_start_ts(retStartTs);
+                       rpcRes->set_commit_ts(retCommitTs);
+                       if (ret != 0) {
+                           rpcRes->set_result(ret);
+                           rpcRes->set_err_msg("ReadData err ");
+                           if (ret == 99) {
+                               rpcRes->set_err_msg("data not found");
+                           } else if (ret == 66) {
+                               //提交中则等待 todo:考虑连接断开的情况
+                               rpcRes->set_err_msg("data commiting");
+
+                               struct pollfd pf = { 0 };
+                               pf.fd = fd;
+                               pf.events = (POLLIN|POLLERR|POLLHUP);
+                               ret = co_poll( co_get_epoll_ct(),&pf,1,500);
+                               if (ret != 0) {
+                                   LOG_COUT << "连接断开 fd="<< fd << " begin_ts=" << begin_ts << LOG_ENDL;
+                                   goto Response;
+                               } else {
+                                   //无事件
+                                   continue;
+                               }
+                           } else if (ret == 33) {
+                               //fix
+                               ret = 0;
+                               value = "";
+                               rpcRes->set_err_msg("data deleted");
+                           }
+                           goto Response;
+                       } else {
+                           break;
+                       }
+                   }
 
                 } else if (rpcReq->request_type() == tpc::Network::RequestType::Req_Type_Delete
                     ||rpcReq->request_type() == tpc::Network::RequestType::Req_Type_Update
@@ -345,12 +371,29 @@ static void *readwrite_routine( void *arg )
                     //    更新data_key_entry-->{state:update, value:value2, next:begin_ts1, cur_version:begin_ts}
                     //    trans_begin_ts --> {state:begin, keys:[key, ] }中keys增加key
 
-                    ret = g_storage.addLock(rpcReq->key(), begin_ts);
-                    if (ret != 0) {
-                        rpcRes->set_result(1);
-                        rpcRes->set_err_msg("lock err ");
-                        goto Response;
+                    while (1) { //todo:排队优化
+                        ret = g_storage.addLock(rpcReq->key(), begin_ts);
+                        if (ret != 0) {
+//                            rpcRes->set_result(1);
+//                            rpcRes->set_err_msg("lock err ");
+//                            goto Response;
+                            //todo:考虑连接断开的情况
+                            struct pollfd pf = { 0 };
+                            pf.fd = fd;
+                            pf.events = (POLLIN|POLLERR|POLLHUP);
+                            ret = co_poll( co_get_epoll_ct(),&pf,1,500);
+                            if (ret != 0) {
+                                LOG_COUT << "连接断开 fd="<< fd << " begin_ts=" << begin_ts << LOG_ENDL;
+                                goto Response;
+                            } else {
+                                //无事件
+                                continue;
+                            }
+                        } else {
+                            break;
+                        }
                     }
+
                     ret = g_storage.addData(rpcReq->key(), rpcReq->value(), begin_ts, rpcReq->request_type());
                     if (ret != 0) {
                         rpcRes->set_result(ret);

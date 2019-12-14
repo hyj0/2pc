@@ -41,6 +41,7 @@ void *mainCoroutine(void *arg)
         exit(-1);
         return NULL;
     }
+    int waitRecvFlg = 0;
     while (true) {
         int ret;
 
@@ -56,6 +57,7 @@ void *mainCoroutine(void *arg)
         }
 
         if (pf[1].revents) {
+            waitRecvFlg = 0;
             tpc::Core::Msg msgCl;
             ret = msgCl.ReadOneMsg(fd);
             if (ret < 0) {
@@ -80,6 +82,10 @@ void *mainCoroutine(void *arg)
         int n = read(0, buff, 1000);
         if (n < 0) {
             LOG_COUT << " read err fd=" << 0 << LOG_ENDL_ERR;
+            continue;
+        }
+        if (waitRecvFlg) {
+            LOG_COUT << "waiting server return ..." << LOG_ENDL;
             continue;
         }
         char args[4][100];
@@ -128,6 +134,7 @@ void *mainCoroutine(void *arg)
             LOG_COUT << "sendMsg err ret=" << ret << LOG_ENDL_ERR;
             continue;
         }
+        waitRecvFlg = 1;
     }
 }
 
