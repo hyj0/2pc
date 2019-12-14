@@ -14,12 +14,13 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR} ${PROTOBUF_INCLUDE_DIRS}
         ${PROJECT_SOURCE_DIR}/src)
 
 set(SRC Log.cpp  Core/Config.cpp Core/Msg.cpp Core/Network.cpp Core/Storage.cpp Core/Utils.cpp)
+add_library(tpc ${SRC})
 
-add_executable(client client.cpp  ${SRC} ${PROTO_SRC} ${PROTO_HEADER})
-target_link_libraries(client rocksdb  pb2json   protobuf  colib_shared dl)
+add_executable(client client.cpp   ${PROTO_SRC} ${PROTO_HEADER})
+target_link_libraries(client tpc rocksdb  pb2json   protobuf  colib_shared dl)
 
-add_executable(logicServ logicServ.cpp  ${SRC} ${PROTO_SRC} ${PROTO_HEADER})
-target_link_libraries(logicServ  rocksdb  pb2json   protobuf colib_shared dl)
+add_executable(logicServ logicServ.cpp   ${PROTO_SRC} ${PROTO_HEADER})
+target_link_libraries(logicServ tpc  rocksdb  pb2json   protobuf colib_shared dl)
 
-add_executable(storageServ storageServ.cpp  ${SRC} ${PROTO_SRC} ${PROTO_HEADER})
-target_link_libraries(storageServ  rocksdb pb2json   protobuf  colib_shared dl)
+add_executable(storageServ storageServ.cpp   ${PROTO_SRC} ${PROTO_HEADER})
+target_link_libraries(storageServ tpc  rocksdb pb2json   protobuf  colib_shared dl)

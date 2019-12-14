@@ -36,7 +36,7 @@ string tpc::Core::Utils::GetTS() {
     struct timeval tv;
     gettimeofday(&tv, NULL);
     stringstream ss;
-    ss << "ts" << (tv.tv_sec*1000 + tv.tv_usec);
+    ss << "ts" << (tv.tv_sec*1000000*10 + tv.tv_usec);
     return ss.str();
 }
 

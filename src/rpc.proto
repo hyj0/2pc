@@ -22,6 +22,7 @@ message RpcReq {
     optional string start_ts = 6; // prepare(start_ts, transList)
     optional string commit_ts = 7; // commit(commit_ts) or rollback(commit_ts)
     repeated tpc.Config.Host trans_list = 8;//
+    optional uint32 get_for_update = 9;//get_for_update加锁取最新数据
 }
 
 message RpcRes {
@@ -41,6 +42,7 @@ message CliReq {
     optional string begin_ts = 3;
     optional string key = 4;
     optional string value = 5;
+    optional uint32 get_for_update = 6;//get_for_update加锁取最新数据
 }
 
 message CliRes {

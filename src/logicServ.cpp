@@ -324,6 +324,7 @@ static void *readwrite_routine( void *arg )
                     rpcReq->set_begin_ts(begin_ts);
                     rpcReq->set_key(cliReq->key());
                     rpcReq->set_value(cliReq->value());
+                    rpcReq->set_get_for_update(cliReq->get_for_update());
                     ret = tpc::Core::Msg::SendMsg(sfd, rpc_reqMsg);
                     if (ret != 0) {
                         errMsg = "SendMsg storage  err";

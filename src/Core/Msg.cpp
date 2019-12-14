@@ -4,6 +4,8 @@
 #include "Utils.h"
 #include <string>
 #include <Log.h>
+#include <poll.h>
+#include <co_routine.h>
 #include "Msg.h"
 #include "Network.h"
 
@@ -12,6 +14,12 @@
 using namespace std;
 //返回msgType, 失败返回<0
 int tpc::Core::Msg::ReadOneMsg(int fd) {
+    //todo:优化两次co_poll 超时时间设置
+    struct pollfd pf = { 0 };
+    pf.fd = fd;
+    pf.events = (POLLIN|POLLERR|POLLHUP);
+    co_poll( co_get_epoll_ct(),&pf, 1, 3*60*1000);
+
     string str = tpc::Core::Network::ReadBuff(fd, sizeof(Msghead));
     if (str.length() <= 0) {
         return -1;

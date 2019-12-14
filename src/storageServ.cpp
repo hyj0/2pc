@@ -284,11 +284,31 @@ static void *readwrite_routine( void *arg )
                     //            返回最大的commited的commit_ts的数据
                     //        3, 返回not found
                     string key = rpcReq->key();
+                    if (rpcReq->get_for_update()) {
+                        //todo:优化排队
+                        while (1) {
+                            ret = g_storage.addLock(key, begin_ts);
+                            if (ret != 0) {
+                                co_poll( co_get_epoll_ct(), NULL, 0, 500);
+                                continue;
+                            } else {
+                                //lock ok
+                                break;
+                            }
+                        }
+                    }
+
+
                     string value;
                     string retBeginTs;//数据的begin_ts
                     string retStartTs;
                     string retCommitTs;
-                    ret = g_storage.ReadData(begin_ts, key, value, retBeginTs, retStartTs,
+                    //get_for_update则取最新版本的数据
+                    string inBeginTs = rpcReq->get_for_update()? tpc::Core::Utils::GetTS():begin_ts;
+                    if (rpcReq->get_for_update()) {
+                        LOG_COUT << "get_for_update inBeginTs=" << inBeginTs << LOG_ENDL;
+                    }
+                    ret = g_storage.ReadData(inBeginTs, key, value, retBeginTs, retStartTs,
                                              retCommitTs);
                     rpcRes->set_value(value);
                     rpcRes->set_begin_ts(retBeginTs);

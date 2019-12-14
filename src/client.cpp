@@ -20,6 +20,7 @@ void printUsage() {
     cout << "usage:" << endl;
     cout << "begin" << endl;
     cout << "get key" << endl;
+    cout << "get_for_update key" << endl;
     cout << "delete key" << endl;
     cout << "update key data" << endl;
     cout << "insert key data" << endl;
@@ -99,6 +100,10 @@ void *mainCoroutine(void *arg)
         } else if ((strcmp(args[0], "get") == 0 || strcmp(args[0], "g") == 0) && n == 2) {
             cliReq->set_request_type(tpc::Network::RequestType::Req_Type_Get);
             cliReq->set_key(args[1]);
+        } else if ((strcmp(args[0], "get_for_update") == 0 || strcmp(args[0], "gf") == 0) && n == 2) {
+            cliReq->set_request_type(tpc::Network::RequestType::Req_Type_Get);
+            cliReq->set_key(args[1]);
+            cliReq->set_get_for_update(1);
         } else if ((strcmp(args[0], "update") == 0 || strcmp(args[0], "u") == 0) && n == 3) {
             cliReq->set_request_type(tpc::Network::RequestType::Req_Type_Update);
             cliReq->set_key(args[1]);
